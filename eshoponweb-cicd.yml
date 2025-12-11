@@ -1,0 +1,51 @@
+name: eShopOnWeb CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_ROLL_FORWARD: Major
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore
+      run: dotnet restore ./src/eShopOnWeb.sln
+
+    - name: Build
+      run: dotnet build ./src/eShopOnWeb.sln --configuration Release --no-restore
+
+    - name: Run tests
+      run: dotnet test ./src/eShopOnWeb.sln --configuration Release --no-build --verbosity normal
+      continue-on-error: false
+
+    - name: Publish web app
+      run: |
+        dotnet publish ./src/Web/Web.csproj -c Release -o ./publish --no-build
+
+    - name: Zip published output
+      run: |
+        cd publish
+        zip -r ../publish.zip .
+
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+        package: ./publish.zip
